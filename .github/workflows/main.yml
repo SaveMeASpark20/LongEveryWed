@@ -1,0 +1,24 @@
+name: Wednesday Trade
+
+on:
+  schedule:
+    - cron: "0 0 * * 3"   # 12:00 AM UTC Wednesday
+    - cron: "0 12 * * 3"  # 12:00 PM UTC Wednesday
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - run: pip install -r requirements.txt
+
+      - run: python main.py
+        env:
+          HL_SECRET: ${{ secrets.HL_SECRET }}
+          HL_WALLET: ${{ secrets.HL_WALLET }}
