@@ -1,9 +1,8 @@
 from hyperliquid.utils import constants
-import json
-import time
-import pandas as pd
-from util import setup, market_order, market_close, isAvailToBuy, decimalPrecision
-import ta
+from util import setup, market_order, isAvailToBuy, decimalPrecision
+from dotenv import load_dotenv
+
+load_dotenv()
 
 address, info, exchange, perp_equity = setup(base_url=constants.MAINNET_API_URL, skip_ws=True)
 
@@ -22,16 +21,10 @@ if(isAvailToBuy):
     capital_to_buy = perp_equity * capital_percent
     
     sizeToBuy = decimalPrecision(max_decimal, perp_equity * capital_percent) 
-    
-    print(exchange.update_leverage(3, coin))
+    leverage = 3
+    print(exchange.update_leverage(leverage, coin))
 
     signal = True #Long Every Wednesday
     print("We Long Every Wed 12am UTC")
     market_order(exchange, coin, signal, sizeToBuy)
     print("Trade Executed")
-
-# sell after 12am tomorrow UTC
-market_close(exchange, coin)
-
-
-

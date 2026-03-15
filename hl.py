@@ -49,7 +49,7 @@ def init(
 
     account: LocalAccount = eth_account.Account.from_key(secret_key)
     local_address = address if address else account.address
-    print("Running with account address:", local_address)
+    
 
     # base_url = constants.MAINNET_API_URL if main_net else constants.TESTNET_API_URL
     base_url = constants.TESTNET_API_URL
@@ -57,8 +57,7 @@ def init(
     user_state = info.user_state(local_address)
     spot_user_state = info.spot_user_state(local_address)
     margin_summary = user_state["marginSummary"]
-    print(spot_user_state)
-    print(margin_summary)
+    
     if float(margin_summary["accountValue"]) == 0 and len(spot_user_state["balances"]) == 0:
         print("Not running because the provided account has no equity")
         url = info.base_url.split(".", 1)[1]
