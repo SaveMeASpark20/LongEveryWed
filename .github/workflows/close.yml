@@ -1,4 +1,4 @@
-name: Buy BTC Wednesday
+name: Close BTC Wednesday
 
 on:
   schedule:
