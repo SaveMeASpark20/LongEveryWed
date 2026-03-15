@@ -1,4 +1,4 @@
-name: Close BTC Wednesday
+name: Close BTC Thursday
 
 on:
   schedule:
