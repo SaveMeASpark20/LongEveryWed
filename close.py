@@ -12,4 +12,9 @@ coin = 'BTC'
 # sell after 12am tomorrow UTC
 print("Closing BTC position (Thursday 00:00 UTC)")
 
-market_close(exchange, coin)
+
+try:
+    market_close(exchange, coin)
+    print("Order closed successfully")
+except Exception as e:
+     print(f"Failed to place order: {e}")

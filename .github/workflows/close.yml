@@ -22,7 +22,7 @@ jobs:
         run: pip install -r requirements.txt
           
       - name: Run  Close Script
-        run: python buy.py
+        run: python close.py
         env:
           HL_SECRET: ${{ secrets.HL_SECRET }}
           HL_WALLET: ${{ secrets.HL_WALLET }}

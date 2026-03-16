@@ -26,5 +26,9 @@ if(isAvailToBuy):
 
     signal = True #Long Every Wednesday
     print("We Long Every Wed 12am UTC")
-    market_order(exchange, coin, signal, sizeToBuy)
-    print("Trade Executed")
+    
+try:
+     market_order(exchange, coin, signal, sizeToBuy)
+     print("Order placed successfully")
+except Exception as e:
+     print(f"Failed to place order: {e}")
