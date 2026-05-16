@@ -1,0 +1,171 @@
+def order(
+        self,
+        name: str,
+        is_buy: bool,
+        sz: float,
+        limit_px: float,
+        order_type: OrderType,
+        reduce_only: bool = False,
+        cloid: Optional[Cloid] = None,
+        builder: Optional[BuilderInfo] = None,
+    ) -> Any:
+        order: OrderRequest = {
+            "coin": name,
+            "is_buy": is_buy,
+            "sz": sz,
+            "limit_px": limit_px,
+            "order_type": order_type,
+            "reduce_only": reduce_only,
+        }
+        if cloid:
+            order["cloid"] = cloid
+        return self.bulk_orders([order], builder)
+
+
+def order_wires_to_order_action(order_wires: list[OrderWire], builder: Any = None, grouping: Grouping = "na") -> Any:
+    action = {
+        "type": "order",
+        "orders": order_wires,
+        "grouping": grouping,
+    }
+    if builder:
+        action["builder"] = builder
+    return action
+
+
+def bulk_orders(
+        self, order_requests: List[OrderRequest], builder: Optional[BuilderInfo] = None, grouping: Grouping = "na"
+    ) -> Any:
+        order_wires: List[OrderWire] = [
+            order_request_to_order_wire(order, self.info.name_to_asset(order["coin"])) for order in order_requests
+        ]
+        timestamp = get_timestamp_ms()
+
+        if builder:
+            builder["b"] = builder["b"].lower()
+        order_action = order_wires_to_order_action(order_wires, builder, grouping) #i think we can skipped this since on action_hash when this pass this is no been used
+
+        signature = sign_l1_action(
+            self.wallet, #not sure kung paano to
+            order_action, # di sya ginamit eh
+            self.vault_address,
+            timestamp, #timestamp in ms
+            self.expires_after,
+            self.base_url == MAINNET_API_URL,
+        )
+
+        return self._post_action(
+            order_action,
+            signature,
+            timestamp,
+        )
+
+
+def order_request_to_order_wire(order: OrderRequest, asset: int) -> OrderWire:
+    order_wire: OrderWire = {
+        "a": asset,
+        "b": order["is_buy"],
+        "p": float_to_wire(order["limit_px"]),
+        "s": float_to_wire(order["sz"]),
+        "r": order["reduce_only"],
+        "t": order_type_to_wire(order["order_type"]),
+    }
+    if "cloid" in order and order["cloid"] is not None:
+        order_wire["c"] = order["cloid"].to_raw()
+    return order_wire
+
+
+
+def sign_l1_action(wallet, action, active_pool, nonce, expires_after, is_mainnet):
+    hash = action_hash(action, active_pool, nonce, expires_after)
+    phantom_agent = construct_phantom_agent(hash, is_mainnet)
+    data = l1_payload(phantom_agent)
+    return (wallet, data)
+
+
+import msgpack
+from eth_utils import keccak, to_hex
+
+
+def address_to_bytes(address):
+    return bytes.fromhex(address[2:] if address.startswith("0x") else address)
+
+
+def action_hash(action, vault_address, nonce, expires_after):
+    data = msgpack.packb(2)
+    data += nonce.to_bytes(8, "big")
+    if vault_address is None:
+        data += b"\x00"
+    else:
+        data += b"\x01"
+        data += address_to_bytes(vault_address)
+    if expires_after is not None:
+        data += b"\x00"
+        data += expires_after.to_bytes(8, "big")
+    return keccak(data)
+
+
+def construct_phantom_agent(hash, is_mainnet):
+    return {"source": "a" if is_mainnet else "b", "connectionId": hash}
+
+
+def l1_payload(phantom_agent):
+    return {
+        "domain": {
+            "chainId": 1337,
+            "name": "Exchange",
+            "verifyingContract": "0x0000000000000000000000000000000000000000",
+            "version": "1",
+        },
+        "types": {
+            "Agent": [
+                {"name": "source", "type": "string"},
+                {"name": "connectionId", "type": "bytes32"},
+            ],
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+        },
+        "primaryType": "Agent",
+        "message": phantom_agent,
+    }
+
+def sign_inner(wallet, data):
+    structured_data = encode_typed_data(full_message=data)
+    signed = wallet.sign_message(structured_data)
+    return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
+
+
+
+Python Final Hash: a4fae578c8baddc6c086e1ecf20b4a983b8137da757eac6a37e33e25e48c8e08
+
+C++ Result: a4fae578c8baddc6c086e1ecf20b4a983b8137da757eac6a37e33e25e48c8e08
+
+
+
+(venv) (base) PS C:\Users\Acer_\Desktop\Dev\Long Every Wed> python test.py
+--- Python Verification ---
+Wallet Address: 0x2e988A386a799F506693793c6A5AF6B54dfAaBfB
+ConnectionId (Hash): 0x86ef4b4db132d61191c2159f45870e107ed4b32c08e76b725d7a6ebebf59b294
+Source: a
+
+Serialized JSON Payload:
+{"domain":{"chainId":1337,"name":"Exchange","verifyingContract":"0x0000000000000000000000000000000000000000","version":"1"},"types":{"Agent":[{"name":"source","type":"string"},{"name":"connectionId","type":"bytes32"}],"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}]},"primaryType":"Agent","message":{"source":"a","connectionId":"0x86ef4b4db132d61191c2159f45870e107ed4b32c08e76b725d7a6ebebf59b294"}}
+
+Wallet Address: 0xF0109fC8DF283027b6285cc889F5aA624EaC1F55
+Serialized JSON Payload:
+{"domain":{"chainId":1337,"name":"Exchange","verifyingContract":"0x0000000000000000000000000000000000000000", "version":"1"},"types":{"Agent":[{"name":"source","type":"string"},{"name":"connectionId","type":"bytes32"}],"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}]},"primaryType":"Agent","message":{"source":"a","connectionId":"0x86ef4b4db132d61191c2159f45870e107ed4b32c08e76b725d7a6ebebf59b294"}}
+
+
+No Builder: {"type":"order","grouping":"na","orders":[{"a":4,"b":true,"p":"100.5","s":"0.1","r":false,"t":{"limit":{"tif":"Gtc"}}}]}
+
+With Builder: {"type":"order","grouping":"na","builder":{"b":"0x0000000000000000000000000000000000000000","f":0},"orders":[{"a":4,"b":true,"p":"100.5","s":"0.1","r":false,"t":{"limit":{"tif":"Gtc"}}}]}
+
+--- Sign L1 Action Test ---
+Wallet Address: 0xF0109fC8DF283027b6285cc889F5aA624EaC1F55
+
+Serialized JSON Payload:
+{"domain":{"chainId":1337,"name":"Exchange","verifyingContract":"0x0000000000000000000000000000000000000000", "version":"1"},"types":{"Agent":[{"name":"source","type":"string"},{"name":"connectionId","type":"bytes32"}],"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}]},"primaryType":"Agent","message":{"source":"a","connectionId":"0x86ef4b4db132d61191c2159f45870e107ed4b32c08e76b725d7a6ebebf59b294"}}

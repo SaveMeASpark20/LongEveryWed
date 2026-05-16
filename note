@@ -1,0 +1,56 @@
+def action_hash(action, vault_address, nonce, expires_after):
+    data = msgpack.packb(action)
+    data += nonce.to_bytes(8, "big")
+    if vault_address is None:
+        data += b"\x00"
+    else:
+        data += b"\x01"
+        data += address_to_bytes(vault_address)
+    if expires_after is not None:
+        data += b"\x00"
+        data += expires_after.to_bytes(8, "big")
+    return keccak(data)
+
+
+def construct_phantom_agent(hash, is_mainnet):
+    return {"source": "a" if is_mainnet else "b", "connectionId": hash}
+
+def l1_payload(phantom_agent):
+    return {
+        "domain": {
+            "chainId": 1337,
+            "name": "Exchange",
+            "verifyingContract": "0x0000000000000000000000000000000000000000",
+            "version": "1",
+        },
+        "types": {
+            "Agent": [
+                {"name": "source", "type": "string"},
+                {"name": "connectionId", "type": "bytes32"},
+            ],
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+        },
+        "primaryType": "Agent",
+        "message": phantom_agent,
+    }
+
+def sign_inner(wallet, data):
+    structured_data = encode_typed_data(full_message=data)
+    signed = wallet.sign_message(structured_data)
+    return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
+
+
+def sign_l1_action(wallet, action, active_pool, nonce, expires_after, is_mainnet):
+    hash = action_hash(action, active_pool, nonce, expires_after)
+    phantom_agent = construct_phantom_agent(hash, is_mainnet)
+    data = l1_payload(phantom_agent)
+    return sign_inner(wallet, data)
+
+
+
+

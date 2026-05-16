@@ -1,0 +1,593 @@
+
+sample ng data ng isesend sa signer_inner()
+{
+        "domain": {
+            "chainId": 1337,
+            "name": "Exchange",
+            "verifyingContract": "0x0000000000000000000000000000000000000000",
+            "version": "1",
+        },
+        "types": {
+            "Agent": [
+                {"name": "source", "type": "string"},
+                {"name": "connectionId", "type": "bytes32"},
+            ],
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+        },
+        "primaryType": "Agent",
+        "message": {"source": "b", "connectionId": "0x86ef4b4db132d61191c2159f45870e107ed4b32c08e76b725d7a6ebebf59b294"}
+    }
+
+def sign_inner(wallet, data):
+    structured_data = encode_typed_data(full_message=data)
+    signed = wallet.sign_message(structured_data)
+    return {"r": to_hex(signed["r"]), "s": to_hex(signed["s"]), "v": signed["v"]}
+
+
+
+def encode_typed_data(
+    domain_data: Optional[Dict[str, Any]] = None,
+    message_types: Optional[Dict[str, Any]] = None,
+    message_data: Optional[Dict[str, Any]] = None,
+    full_message: Optional[Dict[str, Any]] = None,
+) -> SignableMessage:
+    r"""
+    Encode an EIP-712_ message in a manner compatible with other implementations
+    in use, such as the Metamask and Ethers ``signTypedData`` functions.
+
+    See the `EIP-712 spec <https://eips.ethereum.org/EIPS/eip-712>`_ for more information.
+
+    You may supply the information to be encoded in one of two ways:
+
+    As exactly three arguments:
+
+        - ``domain_data``, a dict of the EIP-712 domain data
+        - ``message_types``, a dict of custom types (do not include a ``EIP712Domain``
+          key)
+        - ``message_data``, a dict of the data to be signed
+
+    Or as a single argument:
+
+        - ``full_message``, a dict containing the following keys:
+            - ``types``, a dict of custom types (may include a ``EIP712Domain`` key)
+            - ``primaryType``, (optional) a string of the primary type of the message
+            - ``domain``, a dict of the EIP-712 domain data
+            - ``message``, a dict of the data to be signed
+
+    .. WARNING:: Note that this code has not gone through an external audit, and
+        the test cases are incomplete.
+
+    Type Coercion:
+        - For fixed-size bytes types, smaller values will be padded to fit in larger
+          types, but values larger than the type will raise ``ValueOutOfBounds``.
+          e.g., an 8-byte value will be padded to fit a ``bytes16`` type, but 16-byte
+          value provided for a ``bytes8`` type will raise an error.
+        - Fixed-size and dynamic ``bytes`` types will accept ``int``s. Any negative
+          values will be converted to ``0`` before being converted to ``bytes``
+        - ``int`` and ``uint`` types will also accept strings. If prefixed with ``"0x"``
+          , the string will be interpreted as hex. Otherwise, it will be interpreted as
+          decimal.
+        - Any value for a ``bool`` type that Python considers "falsy" will be
+          interpreted as ``False``. The strings ``"False"``, ``"false"``, and ``"0"``
+          will be also interpreted as ``False``. All other values will be interpreted as
+          ``True``.
+
+    Noteable differences from ``signTypedData``:
+        - Custom types that are not alphanumeric will encode differently.
+        - Custom types that are used but not defined in ``types`` will not encode.
+
+    :param domain_data: EIP712 domain data
+    :param message_types: custom types used by the `value` data
+    :param message_data: data to be signed
+    :param full_message: a dict containing all data and types
+    :returns: a ``SignableMessage``, an encoded message ready to be signed
+
+
+    .. doctest:: python
+
+        >>> # examples of basic usage
+        >>> from eth_account import Account
+        >>> from eth_account.messages import encode_typed_data
+        >>> # 3-argument usage
+
+        >>> # all domain properties are optional
+        >>> domain_data = {
+        ...     "name": "Ether Mail",
+        ...     "version": "1",
+        ...     "chainId": 1,
+        ...     "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+        ...     "salt": b"decafbeef",
+        ... }
+        >>> # custom types
+        >>> message_types = {
+        ...     "Person": [
+        ...         {"name": "name", "type": "string"},
+        ...         {"name": "wallet", "type": "address"},
+        ...     ],
+        ...     "Mail": [
+        ...         {"name": "from", "type": "Person"},
+        ...         {"name": "to", "type": "Person"},
+        ...         {"name": "contents", "type": "string"},
+        ...     ],
+        ... }
+        >>> # the data to be signed
+        >>> message_data = {
+        ...     "from": {
+        ...         "name": "Cow",
+        ...         "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826",
+        ...     },
+        ...     "to": {
+        ...         "name": "Bob",
+        ...         "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+        ...     },
+        ...     "contents": "Hello, Bob!",
+        ... }
+        >>> key = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        >>> signable_message = encode_typed_data(domain_data, message_types, message_data)
+        >>> signed_message = Account.sign_message(signable_message, key)
+        >>> signed_message.message_hash
+        HexBytes('0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530')
+        >>> # the message can be signed in one step using Account.sign_typed_data
+        >>> signed_typed_data = Account.sign_typed_data(key, domain_data, message_types, message_data)
+        >>> signed_typed_data == signed_message
+        True
+
+        >>> # 1-argument usage
+
+        >>> # all domain properties are optional
+        >>> full_message = {
+        ...     "types": {
+        ...         "EIP712Domain": [
+        ...             {"name": "name", "type": "string"},
+        ...             {"name": "version", "type": "string"},
+        ...             {"name": "chainId", "type": "uint256"},
+        ...             {"name": "verifyingContract", "type": "address"},
+        ...             {"name": "salt", "type": "bytes32"},
+        ...         ],
+        ...         "Person": [
+        ...             {"name": "name", "type": "string"},
+        ...             {"name": "wallet", "type": "address"},
+        ...         ],
+        ...         "Mail": [
+        ...             {"name": "from", "type": "Person"},
+        ...             {"name": "to", "type": "Person"},
+        ...             {"name": "contents", "type": "string"},
+        ...         ],
+        ...     },
+        ...     "primaryType": "Mail",
+        ...     "domain": {
+        ...         "name": "Ether Mail",
+        ...         "version": "1",
+        ...         "chainId": 1,
+        ...         "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+        ...         "salt": b"decafbeef"
+        ...     },
+        ...     "message": {
+        ...         "from": {
+        ...             "name": "Cow",
+        ...             "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"
+        ...         },
+        ...         "to": {
+        ...             "name": "Bob",
+        ...             "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"
+        ...         },
+        ...         "contents": "Hello, Bob!",
+        ...     },
+        ... }
+        >>> signable_message_2 = encode_typed_data(full_message=full_message)
+        >>> signed_message_2 = Account.sign_message(signable_message_2, key)
+        >>> signed_message_2.message_hash
+        HexBytes('0xc5bb16ccc59ae9a3ad1cb8343d4e3351f057c994a97656e1aff8c134e56f7530')
+        >>> signed_message_2 == signed_message
+        True
+        >>> # the full_message can be signed in one step using Account.sign_typed_data
+        >>> signed_typed_data_2 = Account.sign_typed_data(key, domain_data, message_types, message_data)
+        >>> signed_typed_data_2 == signed_message_2
+        True
+
+    .. _EIP-712: https://eips.ethereum.org/EIPS/eip-712
+    """  # noqa: E501
+    if full_message is not None:
+        if (
+            domain_data is not None
+            or message_types is not None
+            or message_data is not None
+        ):
+            raise ValueError(
+                "You may supply either `full_message` as a single argument or "
+                "`domain_data`, `message_types`, and `message_data` as three arguments,"
+                " but not both."
+            )
+
+        full_message_types = full_message["types"].copy()
+        """
+        "types": {
+            "Agent": [
+                {"name": "source", "type": "string"},
+                {"name": "connectionId", "type": "bytes32"},
+            ],
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"},
+            ],
+        },
+        """
+        full_message_domain = full_message["domain"].copy()
+        """
+        "domain": {
+            "chainId": 1337,
+            "name": "Exchange",
+            "verifyingContract": "0x0000000000000000000000000000000000000000",
+            "version": "1",
+        },
+        """
+        # If EIP712Domain types were provided, check that they match the domain data
+        if "EIP712Domain" in full_message_types:
+            domain_data_keys = list(full_message_domain.keys())
+            domain_types_keys = [
+                field["name"] for field in full_message_types["EIP712Domain"]
+            ]
+            """ "primaryType": "Agent" """
+
+            if set(domain_data_keys) != (set(domain_types_keys)):
+                raise ValidationError(
+                    "The fields provided in `domain` do not match the fields provided"
+                    " in `types.EIP712Domain`. The fields provided in `domain` were"
+                    f" `{domain_data_keys}`, but the fields provided in "
+                    f"`types.EIP712Domain` were `{domain_types_keys}`."
+                )
+
+        full_message_types.pop("EIP712Domain", None)
+        """
+        "types": {
+            "Agent": [
+                {"name": "source", "type": "string"},
+                {"name": "connectionId", "type": "bytes32"},
+            ]
+        },
+        """
+        # If primaryType was provided, check that it matches the derived primaryType
+        if "primaryType" in full_message:
+            derived_primary_type = get_primary_type(full_message_types)
+            provided_primary_type = full_message["primaryType"]
+            if derived_primary_type != provided_primary_type:
+                raise ValidationError(
+                    "The provided `primaryType` does not match the derived "
+                    "`primaryType`. The provided `primaryType` was "
+                    f"`{provided_primary_type}`, but the derived `primaryType` was "
+                    f"`{derived_primary_type}`."
+                )
+
+        parsed_domain_data = full_message_domain
+        parsed_message_types = full_message_types
+        parsed_message_data = full_message["message"]
+
+    else:
+        parsed_domain_data = domain_data
+        parsed_message_types = message_types
+        parsed_message_data = message_data
+
+    return SignableMessage(
+        HexBytes(b"\x01"),
+        hash_domain(parsed_domain_data),
+        hash_eip712_message(parsed_message_types, parsed_message_data),
+    )
+
+--
+will pass to hash_domain
+"domain": {
+            "chainId": 1337,
+            "name": "Exchange",
+            "verifyingContract": "0x0000000000000000000000000000000000000000",
+            "version": "1",
+        }
+
+
+Hash_domain =
+"EIP712Domain",
+
+domain_types = {
+    "EIP712Domain": [
+        {"name": "name", "type": "string"},
+        {"name": "version", "type": "string"},
+        {"name": "chainId", "type": "uint256"},
+        {"name": "verifyingContract", "type": "address"}
+    ]
+},
+"domain": {
+            "chainId": 1337,
+            "name": "Exchange",
+            "verifyingContract": "0x0000000000000000000000000000000000000000",
+            "version": "1",
+        }
+
+def hash_struct(
+    type_: str,
+    types: Dict[str, List[Dict[str, str]]],
+    data: Dict[str, Any],
+) -> bytes:
+    """
+    "EIP712Domain",
+    domain_types = {
+        "EIP712Domain": [
+            {"name": "name", "type": "string"},
+            {"name": "version", "type": "string"},
+            {"name": "chainId", "type": "uint256"},
+            {"name": "verifyingContract", "type": "address"}
+        ]
+    },
+    "domain": {
+                "chainId": 1337,
+                "name": "Exchange",
+                "verifyingContract": "0x0000000000000000000000000000000000000000",
+                "version": "1",
+            }
+    """
+    encoded = encode_data(type_, types, data)
+
+    return bytes(keccak(encoded))
+
+    --- bytes(keccak([bytes(keccak(text=(EIP712Domain(name string, version string, chainId uint256, verifyingContract address)))),
+                keccak(to_bytes(text=Exchange)),
+                keccak(to_bytes(text=Exchange)),
+                to_int(text=Exchange),
+                Exchange
+        ] ))
+
+
+def encode_data(
+    type_: str,
+    types: Dict[str, List[Dict[str, str]]],
+    data: Dict[str, Any],
+) -> bytes:
+    encoded_types: List[str] = ["bytes32"] # ["bytes32"]
+    encoded_values: List[Union[bytes, int]] = [hash_type(type_, types)] 
+
+    for field in types[type_]:
+        """
+        domain_types = {
+        "EIP712Domain": [
+            {"name": "name", "type": "string"},
+            {"name": "version", "type": "string"},
+            {"name": "chainId", "type": "uint256"},
+            {"name": "verifyingContract", "type": "address"}
+        ]
+        }
+
+            "domain": {
+                "chainId": 1337,
+                "name": "Exchange",
+                "verifyingContract": "0x0000000000000000000000000000000000000000",
+                "version": "1",
+            }
+        """
+        type, value = encode_field(
+            types, field["name"], field["type"], data.get(field["name"])
+        )
+
+        """
+        "name",  "string", "Exchange"
+        "version", "string", "Exchange",
+        "chainId", "uint256", "Exchange",
+        "verifyingContract", "address", "Exchange"
+
+        sample encode_field return     
+            type = string, 
+            value = to_bytes(text=Exchange) -> return (keccak(Exchange))
+        """
+
+        encoded_types.append(type)
+        
+        encoded_types = ["bytes32", bytes32, bytes32, uint256, address]
+
+        encoded_values.append(value)
+
+        encoded_values =
+        #[bytes(keccak(text=(EIP712Domain(name string, version string, chainId uint256, verifyingContract address)))),
+                keccak(to_bytes(text=Exchange)),
+                keccak(to_bytes(text=Exchange)),
+                to_int(text=Exchange),
+                Exchange
+        ] 
+
+    return bytes(encode(encoded_types, encoded_values)) # it will return an encoded bytes of this encoded_types, encoded_values, 
+    #sample encode(["uint256"], [5]) -> 0000000000000000000000000000000000000000000000000000000000000005
+
+def hash_type(type_: str, types: Dict[str, List[Dict[str, str]]]) -> bytes:
+    #EIP712Domain(name string, version string, chainId uint256, verifyingContract address)
+    return bytes(keccak(text=encode_type(type_, types)))
+
+def encode_type(type_: str, types: Dict[str, List[Dict[str, str]]]) -> str:
+    result = ""
+    unsorted_deps = find_type_dependencies(type_, types) #"EIP712Domain"
+    if type_ in unsorted_deps:
+        unsorted_deps.remove(type_)
+
+    deps = [type_] + sorted(list(unsorted_deps))
+    for type_ in deps:
+        children_list = []
+        for child in types[type_]:
+            child_type = child["type"]
+            child_name = child["name"]
+            children_list.append(f"{child_type} {child_name}")
+
+        result += f"{type_}({','.join(children_list)})"
+    return result #EIP712Domain(name string, version string, chainId uint256, verifyingContract address)
+
+
+def find_type_dependencies(
+    type_: str,
+    types: Dict[str, List[Dict[str, str]]],
+    results: Optional[Set[str]] = None,
+) -> Set[str]:
+    if results is None:
+        results = set()
+
+    # a type must be a string
+    if not isinstance(type_, str):
+        raise ValueError(
+            "Invalid find_type_dependencies input: expected string, got "
+            f"`{type_}` of type `{type(type_)}`"
+        )
+    # get core type if it's an array type
+    type_ = parse_core_array_type(type_)
+
+    if (
+        # don't look for dependencies of solidity types
+        type_ in EIP712_SOLIDITY_TYPES
+        # found a type that's already been added
+        or type_ in results
+    ):
+        return results
+
+    # found a type that isn't defined
+    elif type_ not in types:
+        raise ValueError(f"No definition of type `{type_}`")
+
+    results.add(type_)
+
+    for field in types[type_]:
+        find_type_dependencies(field["type"], types, results)
+    return results
+
+def encode_field(
+    types: Dict[str, List[Dict[str, str]]],
+    name: str,
+    type_: str,
+    value: Any,
+) -> Tuple[str, Union[int, bytes]]:
+    
+        """
+        domain_types = {
+        "EIP712Domain": [
+            {"name": "name", "type": "string"},
+            {"name": "version", "type": "string"},
+            {"name": "chainId", "type": "uint256"},
+            {"name": "verifyingContract", "type": "address"}
+        ]
+        }
+
+        domain_types, "name",  "string", "Exchange"
+        domain_types, "version", "string", "Exchange",
+        domain_types, "chainId", "uint256", "Exchange",
+        domain_types, "verifyingContract", "address", "Exchange"
+        """
+
+    if type_ in types.keys():
+        # type is a custom type
+        if value is None:
+            return ("bytes32", b"\x00" * 32)
+        else:
+            return ("bytes32", keccak(encode_data(type_, types, value)))
+
+    elif type_ in ["string", "bytes"] and value is None:
+        return ("bytes32", b"")
+
+    # None is allowed only for custom and dynamic types
+    elif value is None:
+        raise ValueError(f"Missing value for field `{name}` of type `{type_}`")
+
+    elif is_array_type(type_):
+        # handle array type with non-array value
+        if not isinstance(value, list):
+            raise ValueError(
+                f"Invalid value for field `{name}` of type `{type_}`: "
+                f"expected array, got `{value}` of type `{type(value)}`"
+            )
+
+        parsed_type = parse_parent_array_type(type_)
+        type_value_pairs = [
+            encode_field(types, name, parsed_type, item) for item in value
+        ]
+        if not type_value_pairs:
+            # the keccak hash of `encode((), ())`
+            return (
+                "bytes32",
+                b"\xc5\xd2F\x01\x86\xf7#<\x92~}\xb2\xdc\xc7\x03\xc0\xe5\x00\xb6S\xca\x82';{\xfa\xd8\x04]\x85\xa4p",  # noqa: E501
+            )
+
+        data_types, data_hashes = zip(*type_value_pairs)
+        return ("bytes32", keccak(encode(data_types, data_hashes)))
+
+    elif type_ == "bool":
+        falsy_values = {"False", "false", "0"}
+        return (type_, False) if not value or value in falsy_values else (type_, True)
+
+    # all bytes types allow hexstr and str values
+    elif type_.startswith("bytes"):
+        if not isinstance(value, bytes):
+            if is_0x_prefixed_hexstr(value):
+                value = to_bytes(hexstr=value)
+            elif isinstance(value, str):
+                value = to_bytes(text=value)
+            else:
+                if isinstance(value, int) and value < 0:
+                    value = 0
+
+                value = to_bytes(value)
+
+        return (
+            # keccak hash if dynamic `bytes` type
+            ("bytes32", keccak(value))
+            if type_ == "bytes"
+            # if fixed bytesXX type, do not hash
+            else (type_, value)
+        )
+
+    elif type_ == "string":
+        if isinstance(value, int):
+            value = to_bytes(value)
+        else:
+            value = to_bytes(text=value)
+        return ("bytes32", keccak(value))
+
+    # allow string values for int and uint types
+    elif isinstance(value, str) and type_.startswith(("int", "uint")):
+        if is_0x_prefixed_hexstr(value):
+            return (type_, to_int(hexstr=value))
+        else:
+            return (type_, to_int(text=value))
+
+    return (type_, value)
+
+
+    def keccak(
+    primitive: Optional[Union[bytes, int, bool]] = None,
+    hexstr: Optional[str] = None,
+    text: Optional[str] = None,
+) -> bytes:
+    return bytes(keccak_256(to_bytes(primitive, hexstr, text)))
+
+
+Python Domain Hash: 46e7194a91237d1a1efda8f1a09b528d1ed44184caa324a91b6a64825c6c3a7b
+
+Domain Hash: 0x46e7194a91237d1a1efda8f1a09b528d1ed44184caa324a91b6a64825c6c3a7b
+
+
+C++ Domain Hash: 0x46e7194a91237d1a1efda8f1a09b528d1ed44184caa324a91b6a64825c6c3a7b
+C++ Message Hash: 0x1af0765a57945009517764dae696046cd51f0fab377ea9b42cd97f18f07af256
+C++ Final Digest: 0x77c8f8f58d0874f99f8494dba5ec142f1c19d482b5cd4fe839a6d33b8f7ab1a8
+
+C:\Hyperliquid_CPP\x64\Release\Hyperliquid-CPP.exe (process 26820) exited with code 0 (0x0).
+To automatically close the console when debugging stops, enable Tools->Options->Debugging->Automatically close the console when debugging stops.
+Press any key to close this window . . .
+
+(venv) (base) PS C:\Users\Acer_\Desktop\Dev\Long Every Wed> python test.py
+Domain Hash:  46e7194a91237d1a1efda8f1a09b528d1ed44184caa324a91b6a64825c6c3a7b
+Message Hash: 1af0765a57945009517764dae696046cd51f0fab377ea9b42cd97f18f07af256
+Final Digest: 77c8f8f58d0874f99f8494dba5ec142f1c19d482b5cd4fe839a6d33b8f7ab1a8
+(venv) (base) PS C:\Users\Acer_\Desktop\Dev\Long Every Wed> 
+
+
+(venv) (base) PS C:\Users\Acer_\Desktop\Dev\Long Every Wed> python test.py                                                                                                 
+Domain Hash:  46e7194a91237d1a1efda8f1a09b528d1ed44184caa324a91b6a64825c6c3a7b
+Message Hash: 1af0765a57945009517764dae696046cd51f0fab377ea9b42cd97f18f07af256
+Final Digest: 77c8f8f58d0874f99f8494dba5ec142f1c19d482b5cd4fe839a6d33b8f7ab1a8
+(venv) (base) PS C:\Users\Acer_\Desktop\Dev\Long Every Wed> 

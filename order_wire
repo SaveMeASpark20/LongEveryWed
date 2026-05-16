@@ -1,0 +1,93 @@
+BuilderInfo = TypedDict("BuilderInfo", {"b": str, "f": int})
+
+OrderRequest = TypedDict(
+    "OrderRequest",
+    {
+        "coin": str,
+        "is_buy": bool,
+        "sz": float,
+        "limit_px": float,
+        "order_type": OrderType,
+        "reduce_only": bool,
+        "cloid": NotRequired[Optional[Cloid]],
+    },
+    total=False,
+)
+
+OrderWire = TypedDict(
+    "OrderWire",
+    {
+        "a": int,
+        "b": bool,
+        "p": str,
+        "s": str,
+        "r": bool,
+        "t": OrderTypeWire,
+        "c": NotRequired[Optional[str]],
+    },
+)
+
+def float_to_wire(x: float) -> str:
+    rounded = f"{x:.8f}"
+    if abs(float(rounded) - x) >= 1e-12:
+        raise ValueError("float_to_wire causes rounding", x)
+    if rounded == "-0":
+        rounded = "0"
+    normalized = Decimal(rounded).normalize()
+    return f"{normalized:f}"
+
+def order_type_to_wire(order_type: OrderType) -> OrderTypeWire:
+    if "limit" in order_type:
+        return {"limit": order_type["limit"]}
+    elif "trigger" in order_type:
+        return {
+            "trigger": {
+                "isMarket": order_type["trigger"]["isMarket"],
+                "triggerPx": float_to_wire(order_type["trigger"]["triggerPx"]),
+                "tpsl": order_type["trigger"]["tpsl"],
+            }
+        }
+    raise ValueError("Invalid order type", order_type)
+
+
+
+def order_request_to_order_wire(order: OrderRequest, asset: int) -> OrderWire:
+    order_wire: OrderWire = {
+        "a": asset,
+        "b": order["is_buy"],
+        "p": float_to_wire(order["limit_px"]),
+        "s": float_to_wire(order["sz"]),
+        "r": order["reduce_only"],
+        "t": order_type_to_wire(order["order_type"]),
+    }
+    if "cloid" in order and order["cloid"] is not None:
+        order_wire["c"] = order["cloid"].to_raw()
+    return order_wire
+
+
+def bulk_orders(
+        self, order_requests: List[OrderRequest], builder: Optional[BuilderInfo] = None, grouping: Grouping = "na"
+    ) -> Any:
+        order_wires: List[OrderWire] = [
+            order_request_to_order_wire(order, self.info.name_to_asset(order["coin"])) for order in order_requests
+        ]
+        timestamp = get_timestamp_ms()
+
+        if builder:
+            builder["b"] = builder["b"].lower()
+        order_action = order_wires_to_order_action(order_wires, builder, grouping)
+
+        signature = sign_l1_action(
+            self.wallet,
+            order_action,
+            self.vault_address,
+            timestamp,
+            self.expires_after,
+            self.base_url == MAINNET_API_URL,
+        )
+
+        return self._post_action(
+            order_action,
+            signature,
+            timestamp,
+        )
